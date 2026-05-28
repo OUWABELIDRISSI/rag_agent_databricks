@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS embeddings (
     document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL,
     chunk_text  TEXT NOT NULL,
-    embedding   vector(384),              -- dimension matches BAAI/bge-small-en-v1.5
+    embedding   vector(1024),              -- dimension matches BAAI/bge-small-en-v1.5
     created_at  TIMESTAMPTZ DEFAULT now()
 );
 

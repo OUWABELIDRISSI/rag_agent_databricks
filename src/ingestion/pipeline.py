@@ -5,12 +5,13 @@ Supports PDF files and web pages (Databricks / Spark / dbt docs).
 
 from __future__ import annotations
 
+import json
 import hashlib
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
-
+import time
 import httpx
 import psycopg
 from bs4 import BeautifulSoup
@@ -66,7 +67,7 @@ class TextSplitter:
             chunks.append(text[start:end].strip())
             start = end - self.chunk_overlap
 
-        return [c for c in chunks if len(c) > 50]
+        return [c for c in chunks if len(c) > 20]
 
 
 class EmbeddingModel:
@@ -81,18 +82,25 @@ class EmbeddingModel:
         self._api_key = _settings.mistral_api_key
 
     def encode(self, texts: list[str]) -> list[list[float]]:
-        with httpx.Client(timeout=60) as client:
-            response = client.post(
-                self.API_URL,
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={"model": self.MODEL, "input": texts},
-            )
-            response.raise_for_status()
-            data = response.json()
-            return [item["embedding"] for item in data["data"]]
+        for attempt in range(4):
+            with httpx.Client(timeout=60) as client:
+                response = client.post(
+                    self.API_URL,
+                    headers={
+                        "Authorization": f"Bearer {self._api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"model": self.MODEL, "input": texts},
+                )
+                if response.status_code == 429:
+                    wait = 2 ** attempt  # 1s, 2s, 4s, 8s
+                    logger.warning("rate_limit_hit", attempt=attempt, wait=wait)
+                    time.sleep(wait)
+                    continue
+                response.raise_for_status()
+                data = response.json()
+                return [item["embedding"] for item in data["data"]]
+        raise RuntimeError("Mistral API rate limit exceeded after 4 attempts")
 
 class PDFLoader:
     def load(self, path: Path) -> tuple[str, str]:
@@ -203,11 +211,11 @@ class IngestionPipeline:
                             chunk.source_type,
                             chunk.title,
                             chunk.chunk_text,
-                            {
+                            json.dumps({
                                 "chunk_index": chunk.chunk_index,
                                 "fingerprint": chunk.fingerprint,
                                 **chunk.metadata,
-                            },
+                            }),
                         ),
                     )
                     cur.execute(

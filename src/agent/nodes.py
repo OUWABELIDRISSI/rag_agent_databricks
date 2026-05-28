@@ -11,8 +11,8 @@ Nodes:
 from __future__ import annotations
 
 import json
-
-import anthropic
+import httpx
+#import anthropic
 from langchain_core.messages import HumanMessage
 
 from src.agent.prompts import DIRECT_SYSTEM_PROMPT, RAG_SYSTEM_PROMPT, ROUTER_PROMPT
@@ -24,28 +24,40 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 # Shared Anthropic client (thread-safe, reuse across calls)
-_client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+#_client = anthropic.Anthropic(api_key=settings.openrouter_api_key)
 _retriever = VectorRetriever(top_k=6)
 
+def _call_llm(system: str, user: str) -> str:
+    """Call any LLM via OpenRouter (OpenAI-compatible API)."""
+    with httpx.Client(timeout=60) as client:
+        response = client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {settings.openrouter_api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://github.com/OUWABELIDRISSI",
+            },
+            json={
+                "model": settings.llm_model,
+                "temperature": settings.llm_temperature,
+                "max_tokens": settings.llm_max_tokens,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            },
+        )
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"].strip()
 
 # ── Node 1: Router ────────────────────────────────────────────────────────────
 
 def router_node(state: AgentState) -> AgentState:
-    """
-    Decides whether to use RAG or answer directly.
-    Uses Claude with a strict JSON output format.
-    """
+    """Decides whether to use RAG or answer directly."""
     question = state["question"]
     logger.info("router_node", question_preview=question[:60])
 
-    response = _client.messages.create(
-        model=settings.llm_model,
-        max_tokens=128,
-        system=ROUTER_PROMPT,
-        messages=[{"role": "user", "content": question}],
-    )
-
-    raw = response.content[0].text.strip()
+    raw = _call_llm(system=ROUTER_PROMPT, user=question)
 
     try:
         decision = json.loads(raw)
@@ -71,20 +83,16 @@ def retriever_node(state: AgentState) -> AgentState:
     return {**state, "chunks": chunks}
 
 
+
 # ── Node 3: Reranker ──────────────────────────────────────────────────────────
 
 def reranker_node(state: AgentState) -> AgentState:
-    """
-    Filters and reranks chunks by relevance score.
-    Keeps top 4 chunks above threshold to reduce context noise.
-    """
+    """Filters and reranks chunks by relevance score."""
     chunks = state["chunks"]
 
-    # Sort by score descending, keep top 4 above 0.40
     ranked = sorted(chunks, key=lambda c: c.score, reverse=True)
     relevant = [c for c in ranked if c.score >= 0.40][:4]
 
-    # Fallback: if nothing passes threshold, keep top 2 anyway
     if not relevant and ranked:
         relevant = ranked[:2]
 
@@ -100,10 +108,7 @@ def reranker_node(state: AgentState) -> AgentState:
 # ── Node 4: Generator ─────────────────────────────────────────────────────────
 
 def generator_node(state: AgentState) -> AgentState:
-    """
-    Calls Claude to generate the final answer.
-    Uses retrieved context for RAG, or general knowledge for direct answers.
-    """
+    """Calls LLM via OpenRouter to generate the final answer."""
     question = state["question"]
     route = state.get("route", "rag")
 
@@ -121,7 +126,6 @@ def generator_node(state: AgentState) -> AgentState:
                 "messages": [HumanMessage(content=question)],
             }
 
-        # Build context string from chunks
         context_parts = []
         for i, chunk in enumerate(relevant_chunks, 1):
             context_parts.append(
@@ -138,14 +142,7 @@ def generator_node(state: AgentState) -> AgentState:
 
     logger.info("generator_node", route=route, question_preview=question[:60])
 
-    response = _client.messages.create(
-        model=settings.llm_model,
-        max_tokens=settings.llm_max_tokens,
-        system=system_prompt,
-        messages=[{"role": "user", "content": question}],
-    )
-
-    answer = response.content[0].text.strip()
+    answer = _call_llm(system=system_prompt, user=question)
 
     logger.info("generator_node_done", answer_length=len(answer))
 

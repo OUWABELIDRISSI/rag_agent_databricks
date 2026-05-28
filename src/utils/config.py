@@ -16,8 +16,9 @@ class Settings(BaseSettings):
 
     # ── LLM ──────────────────────────────────────────────────────────
     anthropic_api_key: str = Field(..., description="Anthropic API key")
+    openrouter_api_key: str = Field("", description="OpenRouter API key")
     mistral_api_key: str = Field("", description="Mistral API key for embeddings")
-    llm_model: str = Field("claude-sonnet-4-20250514")
+    llm_model: str = Field("anthropic/claude-3-haiku")
     llm_max_tokens: int = Field(2048, ge=256, le=8096)
     llm_temperature: float = Field(0.0, ge=0.0, le=1.0)
 
