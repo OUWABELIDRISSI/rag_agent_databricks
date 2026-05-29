@@ -1,8 +1,9 @@
 .venv/
-.github/
 .env
 # Python
 src/__pycache__
 src/utils/__pycache__/
 src/ingestion/__pycache__/
 src/agent/__pycache__/
+.pytest_cache/
+.ruff_cache/

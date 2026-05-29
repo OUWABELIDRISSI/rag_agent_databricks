@@ -6,7 +6,6 @@ Evaluates RAG quality and logs results to PostgreSQL + Langfuse (optional).
 from __future__ import annotations
 
 import json
-import time
 import uuid
 from dataclasses import dataclass
 
@@ -161,29 +160,28 @@ def _store_eval(result: EvalResult) -> None:
     """Persist evaluation result to PostgreSQL."""
     conn_str = settings.postgres_url.replace("+psycopg", "")
     try:
-        with psycopg.connect(conn_str) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with psycopg.connect(conn_str) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
                     INSERT INTO eval_traces (
                         id, query, answer, contexts,
                         faithfulness, answer_relevancy, context_recall,
                         latency_ms, model
                     ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """,
-                    (
-                        str(uuid.uuid4()),
-                        result.query,
-                        result.answer,
-                        result.contexts,
-                        result.faithfulness,
-                        result.answer_relevancy,
-                        result.context_recall,
-                        result.latency_ms,
-                        result.model,
-                    ),
-                )
-                conn.commit()
+                (
+                    str(uuid.uuid4()),
+                    result.query,
+                    result.answer,
+                    result.contexts,
+                    result.faithfulness,
+                    result.answer_relevancy,
+                    result.context_recall,
+                    result.latency_ms,
+                    result.model,
+                ),
+            )
+            conn.commit()
         logger.info("eval_stored")
     except Exception as e:
         logger.error("eval_store_failed", error=str(e))

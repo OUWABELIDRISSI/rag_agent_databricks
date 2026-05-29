@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import time
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-import json
 
 from src.agent.graph import run_agent
 from src.api.schemas import AgentResponse, HealthResponse, QuestionRequest
@@ -35,7 +35,7 @@ def ask(request: QuestionRequest) -> AgentResponse:
         result = run_agent(request.question)
     except Exception as e:
         logger.error("api_ask_error", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
     latency_ms = int((time.perf_counter() - start) * 1000)
     logger.info("api_ask_done", latency_ms=latency_ms, route=result["route"])
@@ -53,6 +53,7 @@ def ask_stream(request: QuestionRequest) -> StreamingResponse:
     Streaming version of /ask.
     Returns Server-Sent Events (SSE) chunks as the answer is generated.
     """
+
     def generate():
         try:
             result = run_agent(request.question)

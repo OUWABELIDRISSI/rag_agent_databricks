@@ -5,13 +5,14 @@ Supports PDF files and web pages (Databricks / Spark / dbt docs).
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
-import time
+
 import httpx
 import psycopg
 from bs4 import BeautifulSoup
@@ -78,6 +79,7 @@ class EmbeddingModel:
 
     def __init__(self) -> None:
         from src.utils.config import settings as _settings
+
         logger.info("loading_embedding_model", model=self.MODEL)
         self._api_key = _settings.mistral_api_key
 
@@ -93,7 +95,7 @@ class EmbeddingModel:
                     json={"model": self.MODEL, "input": texts},
                 )
                 if response.status_code == 429:
-                    wait = 2 ** attempt  # 1s, 2s, 4s, 8s
+                    wait = 2**attempt  # 1s, 2s, 4s, 8s
                     logger.warning("rate_limit_hit", attempt=attempt, wait=wait)
                     time.sleep(wait)
                     continue
@@ -101,6 +103,7 @@ class EmbeddingModel:
                 data = response.json()
                 return [item["embedding"] for item in data["data"]]
         raise RuntimeError("Mistral API rate limit exceeded after 4 attempts")
+
 
 class PDFLoader:
     def load(self, path: Path) -> tuple[str, str]:
@@ -185,50 +188,51 @@ class IngestionPipeline:
         stored = 0
         conn_str = settings.postgres_url.replace("+psycopg", "")
 
-        with psycopg.connect(conn_str) as conn:
-            with conn.cursor() as cur:
-                fingerprints = [c.fingerprint for c in chunks]
-                cur.execute(
-                    "SELECT metadata->>'fingerprint' FROM documents "
-                    "WHERE metadata->>'fingerprint' = ANY(%s)",
-                    (fingerprints,),
-                )
-                existing = {row[0] for row in cur.fetchall()}
+        with psycopg.connect(conn_str) as conn, conn.cursor() as cur:
+            fingerprints = [c.fingerprint for c in chunks]
+            cur.execute(
+                "SELECT metadata->>'fingerprint' FROM documents "
+                "WHERE metadata->>'fingerprint' = ANY(%s)",
+                (fingerprints,),
+            )
+            existing = {row[0] for row in cur.fetchall()}
 
-                for chunk, vector in zip(chunks, vectors, strict=True):
-                    if chunk.fingerprint in existing:
-                        continue
-                    doc_id = uuid.uuid4()
-                    cur.execute(
-                        """
+            for chunk, vector in zip(chunks, vectors, strict=True):
+                if chunk.fingerprint in existing:
+                    continue
+                doc_id = uuid.uuid4()
+                cur.execute(
+                    """
                         INSERT INTO documents
                             (id, source, source_type, title, content, metadata)
                         VALUES (%s, %s, %s, %s, %s, %s)
                         """,
-                        (
-                            str(doc_id),
-                            chunk.source,
-                            chunk.source_type,
-                            chunk.title,
-                            chunk.chunk_text,
-                            json.dumps({
+                    (
+                        str(doc_id),
+                        chunk.source,
+                        chunk.source_type,
+                        chunk.title,
+                        chunk.chunk_text,
+                        json.dumps(
+                            {
                                 "chunk_index": chunk.chunk_index,
                                 "fingerprint": chunk.fingerprint,
                                 **chunk.metadata,
-                            }),
+                            }
                         ),
-                    )
-                    cur.execute(
-                        """
+                    ),
+                )
+                cur.execute(
+                    """
                         INSERT INTO embeddings
                             (document_id, chunk_index, chunk_text, embedding)
                         VALUES (%s, %s, %s, %s)
                         """,
-                        (str(doc_id), chunk.chunk_index, chunk.chunk_text, vector),
-                    )
-                    stored += 1
+                    (str(doc_id), chunk.chunk_index, chunk.chunk_text, vector),
+                )
+                stored += 1
 
-                conn.commit()
+            conn.commit()
 
         logger.info(
             "ingestion_complete",

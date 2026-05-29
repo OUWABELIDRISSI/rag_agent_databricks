@@ -19,6 +19,7 @@ URLS = [
     "https://docs.getdbt.com/docs/build/sources",
 ]
 
+
 def main() -> None:
     pipeline = IngestionPipeline()
     total = 0
@@ -35,6 +36,7 @@ def main() -> None:
 
     logger.info("ingestion_complete", total_chunks=total)
     print(f"\n✅ Ingestion terminée — {total} chunks stockés dans pgvector")
+
 
 if __name__ == "__main__":
     main()

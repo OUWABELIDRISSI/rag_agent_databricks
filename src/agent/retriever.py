@@ -50,11 +50,10 @@ class VectorRetriever:
         query_vector = self._embedder.encode([query])[0]
         conn_str = settings.postgres_url.replace("+psycopg", "")
 
-        with psycopg.connect(conn_str) as conn:
-            with conn.cursor() as cur:
-                if source_filter:
-                    cur.execute(
-                        """
+        with psycopg.connect(conn_str) as conn, conn.cursor() as cur:
+            if source_filter:
+                cur.execute(
+                    """
                         SELECT e.chunk_text, d.source, d.title,
                                1 - (e.embedding <=> %s::vector) AS score,
                                e.chunk_index, d.metadata
@@ -64,11 +63,11 @@ class VectorRetriever:
                         ORDER BY e.embedding <=> %s::vector
                         LIMIT %s
                         """,
-                        (query_vector, source_filter, query_vector, k),
-                    )
-                else:
-                    cur.execute(
-                        """
+                    (query_vector, source_filter, query_vector, k),
+                )
+            else:
+                cur.execute(
+                    """
                         SELECT e.chunk_text, d.source, d.title,
                                1 - (e.embedding <=> %s::vector) AS score,
                                e.chunk_index, d.metadata
@@ -77,9 +76,9 @@ class VectorRetriever:
                         ORDER BY e.embedding <=> %s::vector
                         LIMIT %s
                         """,
-                        (query_vector, query_vector, k),
-                    )
-                rows = cur.fetchall()
+                    (query_vector, query_vector, k),
+                )
+            rows = cur.fetchall()
 
         chunks = [
             RetrievedChunk(

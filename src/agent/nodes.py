@@ -11,8 +11,10 @@ Nodes:
 from __future__ import annotations
 
 import json
+
 import httpx
-#import anthropic
+
+# import anthropic
 from langchain_core.messages import HumanMessage
 
 from src.agent.prompts import DIRECT_SYSTEM_PROMPT, RAG_SYSTEM_PROMPT, ROUTER_PROMPT
@@ -24,8 +26,9 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 # Shared Anthropic client (thread-safe, reuse across calls)
-#_client = anthropic.Anthropic(api_key=settings.openrouter_api_key)
+# _client = anthropic.Anthropic(api_key=settings.openrouter_api_key)
 _retriever = VectorRetriever(top_k=6)
+
 
 def _call_llm(system: str, user: str) -> str:
     """Call any LLM via OpenRouter (OpenAI-compatible API)."""
@@ -50,7 +53,9 @@ def _call_llm(system: str, user: str) -> str:
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"].strip()
 
+
 # ── Node 1: Router ────────────────────────────────────────────────────────────
+
 
 def router_node(state: AgentState) -> AgentState:
     """Decides whether to use RAG or answer directly."""
@@ -72,6 +77,7 @@ def router_node(state: AgentState) -> AgentState:
 
 # ── Node 2: Retriever ─────────────────────────────────────────────────────────
 
+
 def retriever_node(state: AgentState) -> AgentState:
     """Fetches top-k relevant chunks from pgvector."""
     question = state["question"]
@@ -83,8 +89,8 @@ def retriever_node(state: AgentState) -> AgentState:
     return {**state, "chunks": chunks}
 
 
-
 # ── Node 3: Reranker ──────────────────────────────────────────────────────────
+
 
 def reranker_node(state: AgentState) -> AgentState:
     """Filters and reranks chunks by relevance score."""
@@ -106,6 +112,7 @@ def reranker_node(state: AgentState) -> AgentState:
 
 
 # ── Node 4: Generator ─────────────────────────────────────────────────────────
+
 
 def generator_node(state: AgentState) -> AgentState:
     """Calls LLM via OpenRouter to generate the final answer."""

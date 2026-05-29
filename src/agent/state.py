@@ -44,6 +44,6 @@ class RouterDecision(BaseModel):
 
     route: str = Field(
         description="'rag' if the question is about Databricks/Spark/dbt, "
-                    "'direct' otherwise."
+        "'direct' otherwise."
     )
     reason: str = Field(description="Short explanation of the routing decision.")
