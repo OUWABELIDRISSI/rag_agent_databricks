@@ -77,12 +77,13 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Init database
-         run: |
-            PGPASSWORD=${{ secrets.POSTGRES_PASSWORD }} psql \
-              -h ${{ secrets.POSTGRES_HOST }} \
-              -U ${{ secrets.POSTGRES_USER }} \
-              -d ${{ secrets.POSTGRES_DB }} \
-              -f scripts/init_db.sql
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          PGHOST: ${{ secrets.POSTGRES_HOST }}
+          PGUSER: ${{ secrets.POSTGRES_USER }}
+          PGDB: ${{ secrets.POSTGRES_DB }}
+        run: |
+          psql -h "$PGHOST" -U "$PGUSER" -d "$PGDB" -f scripts/init_db.sql
 
       - name: Run tests
         run: pytest tests/ -v --cov=src --cov-report=xml
