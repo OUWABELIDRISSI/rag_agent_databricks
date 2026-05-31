@@ -56,11 +56,11 @@ jobs:
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-      POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
-      POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
-      POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
-      POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: rag_databricks_test
+      POSTGRES_USER: rag_user
+      POSTGRES_PASSWORD: changeme
       ALLOWED_ORIGINS: '["http://localhost:3000"]'
       ENVIRONMENT: test
 
@@ -78,10 +78,10 @@ jobs:
 
       - name: Init database
         env:
-          PGPASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          PGHOST: ${{ secrets.POSTGRES_HOST }}
-          PGUSER: ${{ secrets.POSTGRES_USER }}
-          PGDB: ${{ secrets.POSTGRES_DB }}
+          PGPASSWORD: changeme
+          PGHOST: localhost
+          PGUSER: rag_user
+          PGDB: rag_databricks_test
         run: |
           psql -h "$PGHOST" -U "$PGUSER" -d "$PGDB" -f scripts/init_db.sql
 
@@ -112,8 +112,8 @@ jobs:
           docker run -d \
             -e OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }} \
             -e MISTRAL_API_KEY=${{ secrets.MISTRAL_API_KEY }} \
-            -e POSTGRES_HOST=${{ secrets.POSTGRES_HOST }} \
-            -e POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
+            -e POSTGRES_HOST=localhost \
+            -e POSTGRES_PASSWORD=changeme \
             -e ALLOWED_ORIGINS='["http://localhost"]' \
             --name rag_test \
             rag-agent:${{ github.sha }}
