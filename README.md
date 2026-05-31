@@ -22,6 +22,24 @@ This project demonstrates a production-grade **Agentic RAG** (Retrieval-Augmente
 
 ---
 
+## 🌐 Live Demo
+
+The API is deployed and running on **Azure Container Apps**:
+
+| Endpoint | URL |
+|---|---|
+| 🩺 Health check | [/api/v1/health](https://rag-agent-api.calmsmoke-9ba9205f.francecentral.azurecontainerapps.io/api/v1/health) |
+| 💬 Ask a question | [/api/v1/ask](https://rag-agent-api.calmsmoke-9ba9205f.francecentral.azurecontainerapps.io/api/v1/ask) |
+| 📖 Interactive docs | [/docs](https://rag-agent-api.calmsmoke-9ba9205f.francecentral.azurecontainerapps.io/docs) |
+
+```bash
+curl -X POST https://rag-agent-api.calmsmoke-9ba9205f.francecentral.azurecontainerapps.io/api/v1/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is Delta Lake?"}'
+```
+
+---
+
 ## 🏗️ Architecture
 
 ```
@@ -52,13 +70,13 @@ answer + sources + route
 | LLM | Claude (via OpenRouter) |
 | Embeddings | Mistral `mistral-embed` |
 | Agent orchestration | LangGraph |
-| Vector store | PostgreSQL + pgvector |
+| Vector store | PostgreSQL + pgvector (Neon) |
 | Ingestion | httpx + BeautifulSoup + pypdf |
 | API | FastAPI + uvicorn |
 | Evaluation | RAGAS-style pipeline |
 | Containerization | Docker |
 | CI/CD | GitHub Actions |
-| Cloud | Azure Container Apps |
+| Cloud | Azure Container Apps + Azure Container Registry |
 | Code quality | ruff + mypy + pytest |
 
 ---
@@ -134,6 +152,100 @@ curl -X POST http://localhost:8000/api/v1/ask \
 
 ---
 
+## ☁️ Deployment on Azure
+
+The application is deployed on **Azure Container Apps** with the following infrastructure:
+
+```
+Azure Container Registry (ACR)
+    └── Docker image: ragagentacr.azurecr.io/rag-agent:latest
+
+Azure Container Apps Environment
+    └── Container App: rag-agent-api
+        ├── CPU: 0.5 vCPU
+        ├── Memory: 1 Gi
+        ├── Min replicas: 1
+        ├── Max replicas: 2
+        └── Ingress: external HTTPS
+
+Neon PostgreSQL (serverless)
+    └── pgvector extension
+    └── HNSW index for fast ANN search
+```
+
+### Deploy from scratch
+
+```bash
+# 1. Login to Azure
+az login
+
+# 2. Set variables
+$RESOURCE_GROUP="rg-rag-agent"
+$LOCATION="francecentral"
+$ACR_NAME="ragagentacr"
+$CONTAINER_APP="rag-agent-api"
+$ENVIRONMENT="rag-env"
+
+# 3. Create Resource Group
+az group create --name $RESOURCE_GROUP --location $LOCATION
+
+# 4. Create Container Registry
+az acr create --resource-group $RESOURCE_GROUP --name $ACR_NAME --sku Basic --admin-enabled true
+
+# 5. Build and push Docker image
+az acr login --name $ACR_NAME
+docker build -f docker/Dockerfile -t ragagentacr.azurecr.io/rag-agent:latest .
+docker push ragagentacr.azurecr.io/rag-agent:latest
+
+# 6. Create Container Apps environment
+az provider register -n Microsoft.OperationalInsights --wait
+az containerapp env create --name $ENVIRONMENT --resource-group $RESOURCE_GROUP --location $LOCATION
+
+# 7. Deploy the container app
+az containerapp create \
+  --name $CONTAINER_APP \
+  --resource-group $RESOURCE_GROUP \
+  --environment $ENVIRONMENT \
+  --image ragagentacr.azurecr.io/rag-agent:latest \
+  --target-port 8000 \
+  --ingress external \
+  --min-replicas 1 \
+  --max-replicas 2 \
+  --cpu 0.5 \
+  --memory 1.0Gi \
+  --env-vars \
+    POSTGRES_HOST=YOUR_NEON_HOST \
+    POSTGRES_DB=YOUR_DB \
+    POSTGRES_USER=YOUR_USER \
+    POSTGRES_PORT=5432 \
+    ALLOWED_ORIGINS=* \
+    ENVIRONMENT=production \
+  --secrets \
+    openrouter-key=YOUR_OPENROUTER_KEY \
+    mistral-key=YOUR_MISTRAL_KEY \
+    postgres-password=YOUR_POSTGRES_PASSWORD
+```
+
+### CI/CD Pipeline
+
+Every push to `main` triggers the GitHub Actions pipeline:
+
+```
+lint (ruff + mypy)
+    │
+    ▼
+test (pytest + coverage)
+    │
+    ▼
+docker build
+```
+
+Secrets required in GitHub Actions:
+- `OPENROUTER_API_KEY`
+- `MISTRAL_API_KEY`
+
+---
+
 ## 📁 Project Structure
 
 ```
@@ -196,6 +308,8 @@ pytest tests/ -v
 | `LLM_MODEL` | Model name on OpenRouter | `anthropic/claude-3-haiku` |
 | `CHUNK_SIZE` | Chunk size for ingestion | `512` |
 | `EMBEDDING_DIMENSION` | Embedding vector dimension | `1024` |
+| `ALLOWED_ORIGINS` | CORS allowed origins | `*` |
+| `ENVIRONMENT` | Environment name | `development` |
 
 ---
 
