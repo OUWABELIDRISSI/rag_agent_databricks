@@ -15,7 +15,6 @@ class Settings(BaseSettings):
     )
 
     # ── LLM ──────────────────────────────────────────────────────────
-    #anthropic_api_key: str = Field(..., description="Anthropic API key")
     openrouter_api_key: str = Field("", description="OpenRouter API key")
     mistral_api_key: str = Field("", description="Mistral API key for embeddings")
     llm_model: str = Field("anthropic/claude-3-haiku")
